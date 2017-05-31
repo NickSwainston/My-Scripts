@@ -52,8 +52,8 @@ def add_database_function():
                 "#SBATCH --account=mwaops\n" +\
                 "#SBATCH --nodes=1\n" +\
                 "export OMP_NUM_THREADS=8\n" +\
-                "ncpus=8\n" +\
-                'aprun="aprun -b -n 1 -d $ncpus -q "\n' +\
+                "#ncpus=8\n" +\
+                '#aprun="aprun -b -n 1 -d $ncpus -q "\n' +\
                 'function run\n' +\
                 '{\n' +\
                 '    # run command and add relevant data to the job database\n' +\
@@ -162,13 +162,14 @@ def rfifind(obsid, pointing, work_dir, sub_dir,pulsar=None):
     #send off rfi job
     with open('batch/rfifind.batch','w') as batch_file:
         batch_line = "#!/bin/bash -l\n" +\
-                     "#SBATCH --partition=gpuq\n" +\
+                     "#SBATCH --partition=workq\n" +\
                      "#SBATCH --job-name=rfifind\n" +\
                      "#SBATCH --output=out/rfifind.out\n" +\
-                     "#SBATCH --time=3:50:00\n" 
+                     "#SBATCH --time=3:50:00\n" +\
+                     "ncpus=20\n"
         batch_file.write(batch_line)
         batch_file.write(add_database_function())
-        batch_line = "aprun -b -n 1 -d 8 -q rfifind -ncpus 8 -noclip -time 12.0 "+\
+        batch_line = "time aprun -b -n 1 -d $ncpus -q rfifind -ncpus $ncpus -noclip -time 12.0 "+\
                         "-o " + str(obsid) + " -zapchan `/group/mwaops/bmeyers/code/misc/zapchan.py "+\
                         "-r -N 3072 -Z` /group/mwaops/vcs/" + str(obsid) + \
                         "/pointings/" + str(pointing) + "/" + str(obsid) + "*.fits\n"+\
@@ -225,15 +226,16 @@ def prepdata(obsid, pointing, work_dir, sub_dir,pulsar=None):
             #dedisperse for only 500 steps
             with open('batch/DM_' + dm_start + '.batch','w') as batch_file:
                 batch_line = "#!/bin/bash -l\n" +\
-                             "#SBATCH --partition=gpuq\n" +\
+                             "#SBATCH --partition=workq\n" +\
                              "#SBATCH --job-name=prepsub_" + dm_start + "\n" +\
                              "#SBATCH --output=out/DM_" + dm_start + ".out\n" +\
-                             "#SBATCH --time=3:50:00\n" 
+                             "#SBATCH --time=3:50:00\n"=\
+                             "ncpus=20\n" 
                 batch_file.write(batch_line)
                 batch_file.write(add_database_function())
-                batch_line = "aprun -b -n 1 -d 8 -q prepsubband -ncpus 8 -lodm " + str(dm_start) +\
-                                " -dmstep " + str(dm_line[2]) + " -numdms 500 -numout " + str(numout) +\
-                                " -o " + str(obsid) + " /group/mwaops/vcs/" + str(obsid) + \
+                batch_line = "time aprun -b -n 1 -d $ncpus -q prepsubband -ncpus $ncpus -lodm " +\
+                                str(dm_start) + " -dmstep " + str(dm_line[2]) + " -numdms 500 -numout " +\
+                                str(numout) + " -o " + str(obsid) + " /group/mwaops/vcs/" + str(obsid) + \
                                 "/pointings/" + str(pointing) + "/" + str(obsid) + "*.fits"
                 """
                 batch_line = "run prepsubband '-ncpus 8 -lodm " + str(dm_start) +\
@@ -258,13 +260,14 @@ def prepdata(obsid, pointing, work_dir, sub_dir,pulsar=None):
         #last loop to get the <500 steps
         with open('batch/DM_' + dm_start + '.batch','w') as batch_file:
             batch_line = "#!/bin/bash -l\n" +\
-                         "#SBATCH --partition=gpuq\n" +\
+                         "#SBATCH --partition=workq\n" +\
                          "#SBATCH --job-name=prepsub_" + dm_start + "\n" +\
                          "#SBATCH --output=out/DM_" + dm_start + ".out\n" +\
-                         "#SBATCH --time=3:50:00\n" 
+                         "#SBATCH --time=3:50:00\n" +\
+                         "ncpus=20\n"
             batch_file.write(batch_line)
             batch_file.write(add_database_function())
-            batch_line = "aprun -b -n 1 -d 8 -q prepsubband -ncpus 8 -lodm " + str(dm_start) +\
+            batch_line = "time aprun -b -n 1 -d $ncpus -q prepsubband -ncpus $ncpus -lodm "+str(dm_start) +\
                                 " -dmstep " + str(dm_line[2]) + " -numdms 500 -numout " + str(numout) +\
                                 " -o " + str(obsid) + " -mask " + str(obsid) + "_rfifind.mask "+\
                                 "/group/mwaops/vcs/" + str(obsid) + \
@@ -307,7 +310,7 @@ def prepdata(obsid, pointing, work_dir, sub_dir,pulsar=None):
                      "#SBATCH --dependency=afterok" + job_id_str + "\n" +\
                      'aprun -b -n 1 -d 8 -q realfft ' + str(obsid) + '_DM0.00.dat\n'+\
                      "accelsearch -numharm 4 -zmax 0 " +str(obsid) + "_DM0.00.fft\n"+\
-                     "#python /group/mwaops/nswainston/bin/blindsearch_pipeline.py -o "\
+                     "python /group/mwaops/nswainston/bin/blindsearch_pipeline.py -o "\
                           + str(obsid) + " -p " + str(pointing) + " -m s -w " + work_dir +\
                           " -s " +str(sub_dir)
         batch_file.write(batch_line)
@@ -488,16 +491,19 @@ def accel(obsid, pointing, work_dir, sub_dir, dm_i, pulsar=None):
                              "#SBATCH --partition=workq\n" +\
                              "#SBATCH --job-name=accel_" + f[13:-4] + "\n" +\
                              "#SBATCH --output=" + DIR + "/out/accel_" + f[:-4] + ".out\n" +\
-                             "#SBATCH --time=6:00:00\n" 
+                             "#SBATCH --time=6:00:00\n" +\
+                             "ncpus=20\n"
                 batch_file.write(batch_line)
                 batch_file.write(add_database_function())
                 if pulsar == None:
-                    batch_line = 'run accelsearch "-ncpus 8 -flo 1 -fhi 500 -numharm 8 ' + f + '" ' +\
-                                         DIR[:len(work_dir)] + ' ' + DIR[len(work_dir):] + ' ' + obsid 
+                    batch_line = 'aprun -b -n 1 -d $ncpus accelsearch "-ncpus $ncpus -flo 1 -fhi 500 '+\
+                                    '-numharm 8 ' + f + '" ' + DIR[:len(work_dir)] + ' ' + \
+                                    DIR[len(work_dir):] + ' ' + obsid 
                     batch_file.write(batch_line)
                 else:
                     
-                    batch_line = 'run accelsearch "-ncpus 8 -flo ' + str(1./(float(p)*1.15)) + ' -fhi ' +\
+                    batch_line = 'aprun -b -n 1 -d $ncpus accelsearch "-ncpus $ncpus -flo ' +\
+                                         str(1./(float(p)*1.15)) + ' -fhi ' +\
                                          str(1./(float(p)*0.85)) + ' -numharm 8 ' + f + '" ' +\
                                          DIR[:len(work_dir)] + ' ' + DIR[len(work_dir):] + ' ' + obsid 
                     """
@@ -610,7 +616,8 @@ def fold(obsid, pointing, work_dir, sub_dir, dm_i, pulsar = None):
                          "#SBATCH --job-name=fold_" + str(fold_num) + '_'+ DIR[-10:] + "\n" +\
                          "#SBATCH --output=" + DIR + "/out/fold_" + DIR[-10:] + \
                                             '_' + str(fold_num) +".out\n" +\
-                         "#SBATCH --time=12:00:00\n" 
+                         "#SBATCH --time=12:00:00\n" +\
+                         "ncpus=20\n"
             batch_file.write(batch_line)
             batch_file.write(add_database_function())
             """
@@ -619,8 +626,8 @@ def fold(obsid, pointing, work_dir, sub_dir, dm_i, pulsar = None):
                                 fold_option[:-10] + " -topo " + fold_option[:-10] + ".dat' " +\
                                 " " + work_dir + " blindsearch " + obsid + "\n" +\
             """ 
-            batch_line = "aprun -b -n 1 -d 8 -q prepfold -ncpus 20 -n 128 -nsub 128 -accelcand " +\
-                         str(cand_list[i][1]) + " -accelfile " + cand_list[i][0] + ".cand  -o " +\
+            batch_line = "time aprun -b -n 1 -d $ncpus -q prepfold -ncpus $ncpus -n 128 -nsub 128 "+\
+                        "-accelcand "+str(cand_list[i][1])+" -accelfile "+cand_list[i][0] + ".cand  -o " +\
                          cand_list[i][0][:-10] + " -topo " + cand_list[i][0][:-10] + ".dat\n" 
             batch_file.write(batch_line)
             batch_file.close()
@@ -632,7 +639,8 @@ def fold(obsid, pointing, work_dir, sub_dir, dm_i, pulsar = None):
                                 fold_option[:-10] + " -topo " + fold_option[:-10] + ".dat' " +\
                                 " " + work_dir + " blindsearch " + obsid + "\n" +\
             """ 
-            batch_line = "aprun -b -n 1 -d 20 -q prepfold -ncpus 20 -n 128 -nsub 128 -accelcand "+\
+            batch_line = "time aprun -b -n 1 -d $ncpus -q prepfold -ncpus $ncpus -n 128 -nsub 128 "+\
+                         "-accelcand "+\
                          str(cand_list[i][1]) + " -accelfile " + cand_list[i][0] + ".cand  -o " +\
                          cand_list[i][0][:-10] + " -topo " + cand_list[i][0][:-10] + ".dat\n" 
             batch_file.write(batch_line)
