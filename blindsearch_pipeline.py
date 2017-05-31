@@ -80,7 +80,7 @@ def add_database_function():
     
     
 def numout_calc(DIR):
-    #DIR = '/scratch2/mwaops/vcs/1133329792/pointings/19:45:14.00_-31:47:36.00/'
+    #DIR = '/group/mwaops/vcs/1133329792/pointings/19:45:14.00_-31:47:36.00/'
 
     dirlist =[]
     for file in os.listdir(DIR):
@@ -138,9 +138,8 @@ def get_pulsar_dm_p(pulsar):
             p = columns[1]
     return [dm, p]
     
-
 #-------------------------------------------------------------------------------------------------------------
-def prepdata(obsid, pointing, work_dir, sub_dir,pulsar=None):
+def rfifind(obsid, pointing, work_dir, sub_dir,pulsar=None):
     #Set up some directories and move to it
     if not os.path.exists(work_dir + pointing):
             os.mkdir(work_dir + pointing)
@@ -159,7 +158,39 @@ def prepdata(obsid, pointing, work_dir, sub_dir,pulsar=None):
             os.mkdir(work_dir + sub_dir+ "/batch")
     if not os.path.exists(work_dir + sub_dir + "/out"): 
             os.mkdir(work_dir + sub_dir + "/out")
-    
+            
+    #send off rfi job
+    with open('batch/rfifind.batch','w') as batch_file:
+        batch_line = "#!/bin/bash -l\n" +\
+                     "#SBATCH --partition=gpuq\n" +\
+                     "#SBATCH --job-name=rfifind\n" +\
+                     "#SBATCH --output=out/rfifind.out\n" +\
+                     "#SBATCH --time=3:50:00\n" 
+        batch_file.write(batch_line)
+        batch_file.write(add_database_function())
+        batch_line = "aprun -b -n 1 -d 8 -q rfifind -ncpus 8 -noclip -time 12.0 "+\
+                        "-o " + str(obsid) + " -zapchan `/group/mwaops/bmeyers/code/misc/zapchan.py "+\
+                        "-r -N 3072 -Z` /group/mwaops/vcs/" + str(obsid) + \
+                        "/pointings/" + str(pointing) + "/" + str(obsid) + "*.fits\n"+\
+                        "python /group/mwaops/nswainston/bin/blindsearch_pipeline.py -o "\
+                          + str(obsid) + " -p " + str(pointing) + " -m p -w " + work_dir +\
+                          " -s " +str(sub_dir)
+        batch_file.write(batch_line)
+    submit_line = 'sbatch batch/rfifind.batch'
+    submit_cmd = subprocess.Popen(submit_line,shell=True,stdout=subprocess.PIPE)
+    for line in submit_cmd.stdout:
+        print line,
+    return
+
+
+#-------------------------------------------------------------------------------------------------------------
+def prepdata(obsid, pointing, work_dir, sub_dir,pulsar=None):
+    if not pulsar == None:
+        os.chdir(work_dir + pointing + "/" + obsid + "/" + pulsar)
+        sub_dir = pointing + "/" + obsid + "/" + pulsar + "/"
+    else:
+        os.chdir(work_dir + pointing + "/" + obsid)
+        sub_dir = pointing + "/" + obsid + "/"
     
     #Get the centre freq channel and then run DDplan.py to work out the most effective DMs
     print "Obtaining metadata from http://mwa-metadata01.pawsey.org.au/metadata/ for OBS ID: " + str(obsid)
@@ -173,7 +204,7 @@ def prepdata(obsid, pointing, work_dir, sub_dir,pulsar=None):
         dm, p = get_pulsar_dm_p(pulsar)
         output = subprocess.Popen(['DDplan.py','-l',str(float(dm) - 1.),'-d',str(float(dm) + 1.),'-f',str(centrefreq),'-b','30.7200067160534','-t','0.0001','-n','3072'],stdout=subprocess.PIPE).communicate()
     else:
-        output = subprocess.Popen(['DDplan.py','-l','0','-d','180','-f',str(centrefreq),'-b','30.7200067160534','-t','0.0001','-n','3072'],stdout=subprocess.PIPE).communicate()
+        output = subprocess.Popen(['DDplan.py','-l','0','-d','300','-f',str(centrefreq),'-b','30.7200067160534','-t','0.0001','-n','3072'],stdout=subprocess.PIPE).communicate()
     subprocess.check_call("\n", shell=True)
     dm_list = []
     print output[0]
@@ -183,7 +214,7 @@ def prepdata(obsid, pointing, work_dir, sub_dir,pulsar=None):
         dm_list.append(columns)
         
     #Calculates -numout for prepsubbands
-    numout = numout_calc("/scratch2/mwaops/vcs/" + str(obsid) + "/pointings/" + str(pointing) + "/")
+    numout = numout_calc("/group/mwaops/vcs/" + str(obsid) + "/pointings/" + str(pointing) + "/")
     
     #Submit a bunch some prepsubbands to create our .dat files
     job_id_list = []
@@ -202,12 +233,12 @@ def prepdata(obsid, pointing, work_dir, sub_dir,pulsar=None):
                 batch_file.write(add_database_function())
                 batch_line = "aprun -b -n 1 -d 8 -q prepsubband -ncpus 8 -lodm " + str(dm_start) +\
                                 " -dmstep " + str(dm_line[2]) + " -numdms 500 -numout " + str(numout) +\
-                                " -o " + str(obsid) + " /scratch2/mwaops/vcs/" + str(obsid) + \
+                                " -o " + str(obsid) + " /group/mwaops/vcs/" + str(obsid) + \
                                 "/pointings/" + str(pointing) + "/" + str(obsid) + "*.fits"
                 """
                 batch_line = "run prepsubband '-ncpus 8 -lodm " + str(dm_start) +\
                                 " -dmstep " + str(dm_line[2]) + " -numdms 500 -numout " + str(numout) +\
-                                " -o " + str(obsid) + " /scratch2/mwaops/vcs/" + str(obsid) + \
+                                " -o " + str(obsid) + " /group/mwaops/vcs/" + str(obsid) + \
                                 "/pointings/" + str(pointing) + "/" + str(obsid) + "*.fits' " +\
                                 work_dir + ' blindsearch ' + obsid
                 """
@@ -235,13 +266,14 @@ def prepdata(obsid, pointing, work_dir, sub_dir,pulsar=None):
             batch_file.write(add_database_function())
             batch_line = "aprun -b -n 1 -d 8 -q prepsubband -ncpus 8 -lodm " + str(dm_start) +\
                                 " -dmstep " + str(dm_line[2]) + " -numdms 500 -numout " + str(numout) +\
-                                " -o " + str(obsid) + " /scratch2/mwaops/vcs/" + str(obsid) + \
+                                " -o " + str(obsid) + " -mask " + str(obsid) + "_rfifind.mask "+\
+                                "/group/mwaops/vcs/" + str(obsid) + \
                                 "/pointings/" + str(pointing) + "/" + str(obsid) + "*.fits"
             """
             batch_line = "run prepsubband '-ncpus 8 -lodm " + str(dm_start) +\
                             " -dmstep " + str(dm_line[2]) + " -numdms " + str(steps) + \
                             " -numout " + str(numout) +\
-                            " -o " + str(obsid) + " /scratch2/mwaops/vcs/" + str(obsid) + \
+                            " -o " + str(obsid) + " /group/mwaops/vcs/" + str(obsid) + \
                             "/pointings/" + str(pointing) + "/" + str(obsid) + "*.fits' " +\
                             work_dir + ' blindsearch ' + obsid
             """
@@ -273,7 +305,9 @@ def prepdata(obsid, pointing, work_dir, sub_dir,pulsar=None):
                      "#SBATCH --account=mwaops\n" +\
                      "#SBATCH --nodes=1\n" +\
                      "#SBATCH --dependency=afterok" + job_id_str + "\n" +\
-                     "python /group/mwaops/nswainston/bin/blindsearch_pipeline.py -o "\
+                     'aprun -b -n 1 -d 8 -q realfft ' + str(obsid) + '_DM0.00.dat\n'+\
+                     "accelsearch -numharm 4 -zmax 0 " +str(obsid) + "_DM0.00.fft\n"+\
+                     "#python /group/mwaops/nswainston/bin/blindsearch_pipeline.py -o "\
                           + str(obsid) + " -p " + str(pointing) + " -m s -w " + work_dir +\
                           " -s " +str(sub_dir)
         batch_file.write(batch_line)
@@ -322,33 +356,33 @@ def sort_fft(obsid, pointing, work_dir, sub_dir, pulsar=None):
         for d in dirlist:
             if not d.startswith("DM"):
                 dirlist.remove(d)
-                
-        for d in dirlist:
-            #i and j are the start and stop dm to help with sorting
-            #for weird bug where batch isn't removed from dirlist
-            if d == 'batch':
-                i = None
-            else:
-                i = int(d[3:6])
-                if d.endswith("batch"):
-                    j = int(d[7:-6])
-                elif d.endswith("out"):
-                    j = int(d[7:-4])
-                else:
-                    j = int(d[7:])
-                    
-                for f in all_files:
-                    if f.endswith(".dat") or f.endswith(".inf"):
-                        temp = f.split("DM")
-                        
-                        if float(i) <= float(temp[1][:-4]) < float(j):
-                            #print temp[2][:-4]
-                            os.rename(work_dir + sub_dir + "/" + str(f),work_dir + sub_dir \
-                                      + "/" + str(d) + "/" + str(f))
     else:
         dirlist = ['.']
 
     all_files = os.listdir(DIR+ "/")
+                
+    for d in dirlist:
+        #i and j are the start and stop dm to help with sorting
+        #for weird bug where batch isn't removed from dirlist
+        if d == 'batch':
+            i = None
+        else:
+            i = int(d[3:6])
+            if d.endswith("batch"):
+                j = int(d[7:-6])
+            elif d.endswith("out"):
+                j = int(d[7:-4])
+            else:
+                j = int(d[7:])
+                
+            for f in all_files:
+                if ( f.endswith(".dat") or f.endswith(".inf") ) and not f.endswith('rfifind.inf'):
+                    temp = f.split("DM")
+                    if float(i) <= float(temp[1][:-4]) < float(j):
+                        #print temp[2][:-4]
+                        os.rename(work_dir + sub_dir + "/" + str(f),work_dir + sub_dir \
+                                  + "/" + str(d) + "/" + str(f))
+    
     
     #Send off jobs
     
@@ -682,7 +716,7 @@ args=parser.parse_args()
 if args.work_dir:
     w_d = args.work_dir
 else:
-    w_d = '/group/mwaops/nswainston/tara_candidates/'
+    w_d = '/group/mwaops/nswainston/blindsearch/'
 
 obs = args.observation
 #obsid =  1133329792
@@ -690,8 +724,9 @@ point = args.pointing
 #19:45:14.00_-31:47:36.00
 s_d = args.sub_dir
 
-
-if args.mode == "p" or args.mode == None:\
+if args.mode == "r" or args.mode == None:
+    rfifind(obs, point, w_d, s_d,args.pulsar)
+if args.mode == "p":
     prepdata(obs, point, w_d, s_d,args.pulsar)
 elif args.mode == "s":
     sort_fft(obs, point, w_d, s_d,args.pulsar)
@@ -702,4 +737,4 @@ elif args.mode == "f":
     
         
     
-            
+#blindsearch_pipeline.py -o 1166459712 -p 06:30:00.0_-28:34:00.0
