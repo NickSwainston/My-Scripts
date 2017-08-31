@@ -5,7 +5,7 @@
 #########################
 
 input=${1}
-for psname in `ls $input | grep pfd.ps `
+for psname in `ls $input | grep .ps `
 do
 newname=`basename $psname .ps`
 echo "PS convert to PNG, please wait the process"
