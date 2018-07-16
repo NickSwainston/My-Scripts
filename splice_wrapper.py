@@ -14,6 +14,7 @@ Wraps the splice_psrfits.sh script to automate it. Should be run from the foulde
 """)
 parser.add_argument('-o','--observation',type=str,help='The observation ID to be used.')
 parser.add_argument('-i','--incoh',action='store_true',help='Use this check if there are and incoh files from the beamformer.')
+parser.add_argument('-d','--delete',action='store_true',help='This will cause the script to remove the unspliced files if splice_psrfits.sh succeeds (error code of 0).')
 parser.add_argument('-w','--work_dir',type=str,help='Working directory of the vcs files.')
 args=parser.parse_args()
 
@@ -36,6 +37,7 @@ for i in range(24):
 print chan_order
 
 #move into working fdir
+old_dir = os.getcwd()
 os.chdir(args.work_dir)
 
 if args.incoh:
@@ -106,7 +108,9 @@ for n in range(int(n_fits)):
                       str(int(n)+1)+'.fits')
         else:
             os.rename('temp_incoh_'+str(int(n)+1)+'_0001.fits', str(obsid)+'_incoh_00'+\
-                      str(int(n)+1)+'.fits')        
+                      str(int(n)+1)+'.fits')
+        if args.delete and submit_cmd.returncode != 0:
+            os.remove(submit_line_incoh[14:])
     
     print submit_line
     submit_cmd = subprocess.Popen(submit_line,shell=True,stdout=subprocess.PIPE)
@@ -119,5 +123,6 @@ for n in range(int(n_fits)):
         os.rename('temp_'+str(int(n)+1)+'_0001.fits',str(obsid)+'_000'+str(int(n)+1)+'.fits')
     else:
         os.rename('temp_'+str(int(n)+1)+'_0001.fits', str(obsid)+'_00'+str(int(n)+1)+'.fits')
-    
-os.chdir("-")
+    if args.delete and submit_cmd.returncode != 0:
+        os.remove(submit_line_incoh[14:])
+os.chdir(old_dir)
