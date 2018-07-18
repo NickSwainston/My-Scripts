@@ -8,6 +8,7 @@ import urllib2
 import json
 import time
 import mwa_metadb_utils as meta
+import glob
 
 parser = argparse.ArgumentParser(description="""
 Wraps the splice_psrfits.sh script to automate it. Should be run from the foulder containing the files.
@@ -109,9 +110,17 @@ for n in range(int(n_fits)):
         else:
             os.rename('temp_incoh_'+str(int(n)+1)+'_0001.fits', str(obsid)+'_incoh_00'+\
                       str(int(n)+1)+'.fits')
-        if args.delete and submit_cmd.returncode != 0:
-            os.remove(submit_line_incoh[14:])
-    
+        
+        #wait to get error code
+        (output, err) = submit_cmd.communicate()  
+        p_status = submit_cmd.wait()
+        print "exist code: " + str(submit_cmd.returncode)
+        if args.delete and int(submit_cmd.returncode) == 0:
+            for fd in submit_line_incoh[15:].split(" ")[:-1]:
+                fd = glob.glob(fd)[0]
+                print "Deleting: " + str(fd)
+                if os.path.isfile(fd):
+                     os.remove(fd)
     print submit_line
     submit_cmd = subprocess.Popen(submit_line,shell=True,stdout=subprocess.PIPE)
     out_lines = submit_cmd.stdout
@@ -123,6 +132,15 @@ for n in range(int(n_fits)):
         os.rename('temp_'+str(int(n)+1)+'_0001.fits',str(obsid)+'_000'+str(int(n)+1)+'.fits')
     else:
         os.rename('temp_'+str(int(n)+1)+'_0001.fits', str(obsid)+'_00'+str(int(n)+1)+'.fits')
-    if args.delete and submit_cmd.returncode != 0:
-        os.remove(submit_line_incoh[14:])
-os.chdir(old_dir)
+    
+    #wait to get error code
+    (output, err) = submit_cmd.communicate()  
+    p_status = submit_cmd.wait()
+    
+    print "exist code: " + str(submit_cmd.returncode)
+    if args.delete and int(submit_cmd.returncode) == 0:
+        for fd in submit_line[15:].split(" ")[:-1]:
+            fd = glob.glob(fd)[0]
+            print "Deleting: " + str(fd)
+            if os.path.isfile(fd):
+                 os.remove(fd)
